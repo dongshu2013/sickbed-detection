@@ -51,7 +51,7 @@ def pyramid(image, scale=1.2, minSize=(128, 128)):
     yield image.copy(), 1
     while True:
         w = int(image.shape[1] / scale)
-        image = imutils.resize(image, width=min(400, w))
+        image = imutils.resize(image, width=min(380, w))
         if image.shape[0] < minSize[1] or image.shape[1] < minSize[0]:
             break
         yield image.copy(), width / float(image.shape[1])
@@ -86,3 +86,17 @@ def timestamp():
 
 def abs(val):
     return val if val > 0 else -val
+
+def rotate(img, degree):
+    w, h = img.shape
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), degree, 1)
+    return cv2.warpAffine(img, M, (w, h))
+
+def rotated():
+    for f in file_iterator('../data/rgb-image-train/positive', 'jpg'):
+        img = cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2GRAY)
+        img = cv2.resize(img, (128, 128))
+        for degree in range(0, 360, 90):
+            cv2.imwrite('../data/rgb-image-train/rotated-positive/' + \
+                    str(degree) + '_' + os.path.basename(f), \
+                    rotate(img, degree))

@@ -1,5 +1,7 @@
+#from concurrent.futures import ThreadPoolExecutor
 from utils import file_iterator, pyramid, sliding_window, load_bounding_box, draw_rectangle, build_hog, overlap, abs, timestamp, cpt_area
 from sklearn.externals import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import imutils
 import csv
@@ -7,11 +9,12 @@ import cv2
 import os
 
 ACCURACY_FILE = '../results/accuracy.txt'
+ACCURACY_FIG_FILE = '../results/accuracy.png'
 HARD_NEGATIVE_PATH = '../results/rgb-hard-negative/'
 PREDICT_PATH = '../results/predict/'
 LOW_ACCURACY_IMG_PATH = '../results/rgb-low-accuracy/'
 PROGRESS_FILE = './.progress'
-MODEL_PATH = '../models/svmModel.pkl'
+MODEL_PATH = '../model/svmModel.pkl'
 
 def flattern(windows):
     return [window for scaled_window in windows for window in scaled_window]
@@ -49,12 +52,7 @@ def detect(origin_img, hog, clf):
             windows.append(w.tolist())
     return windows
 
-def save_img_with_box(filename, img, pred_box, label_box):
-    draw_rectangle(img, pred_box, color=(0,55,255))
-    draw_rectangle(img, label_box, color=(255,55,0))
-    cv2.imwrite(PREDICT_PATH + filename, img)
-
-def is_false_positive(label_box, window, threshold=0.65):
+def is_false_positive(label_box, window, threshold=0.6):
     s_window = cpt_area(window)
     s_overlap = cpt_area(overlap(label_box, window))
     r = s_overlap/float(s_window)
@@ -72,57 +70,49 @@ def apply_hard_negative(img, windows, label_box, stride=20):
             subimg = cv2.resize(subimg, (128, 128))
             cv2.imwrite(filepath, subimg)
 
-def save_progress(filename):
-    with open(PROGRESS_FILE, 'a+') as pf:
-        pf.write(filename)
-
-def load_progress():
-    if os.path.isfile(PROGRESS_FILE):
-        lines = [line.rstrip('\n') for line in open(PROGRESS_FILE)]
-        return set(lines)
-    return set([])
-
-def prepare(progress):
-    if len(progress) == 0 or not os.path.isfile(ACCURACY_FILE):
-        with open(ACCURACY_FILE, 'w+') as af:
-            af.write('filename,accurccy\n')
+def draw_accuracy():
+    vals = [line.rstrip('\n').split(',')[1] for line in open(ACCURACY_FILE)]
+    plt.hist([float(val) for val in vals[1:]])
+    plt.title('Accuracy Histogram')
+    plt.xlabel('Accuracy')
+    plt.ylabel('Count')
+    plt.savefig(ACCURACY_FIG_FILE)
 
 def process(img_folder, label_boxes, hog, clf):
-    progress = load_progress()
-    prepare(progress)
-
     for f in file_iterator(img_folder, 'jpg'):
-        if os.path.basename(f) in progress:
-            continue
-
-        print 'Processing %s ... ' % os.path.basename(f)
         img = cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2GRAY)
         f = os.path.basename(f)
 
-        print '    Detecting object and build bounding box ... '
+        print ('Processing file %s'.format(f))
         windows = detect(img, hog, clf)
-        if len(windows) == 0:
-            print '        Object is not detected!'
-            save_progress(f)
-            continue
-        pred_box = get_corner(flattern(windows))
         label_box = label_boxes[f]
+        img_with_box = img.copy()
+        draw_rectangle(img_with_box, label_box, color=(255,55,0))
 
-        print '    Computing accuracy ... '
+        if len(windows) == 0:
+            cv2.imwrite(LOW_ACCURACY_IMG_PATH + f, img_with_box)
+            with open(ACCURACY_FILE, 'a') as af:
+                af.write(f + ',0\n')
+            continue
+
+        pred_box = get_corner(flattern(windows))
         accuracy = cpt_accuracy(label_box, pred_box)
         with open(ACCURACY_FILE, 'a') as af:
             af.write(f + ',' + str(accuracy) + '\n')
 
+        draw_rectangle(img_with_box, pred_box, color=(0,55,255))
+        cv2.imwrite(PREDICT_PATH + f, img_with_box)
+
         if accuracy < 0.5:
-            print '    Applying hard negative learning ... '
-            cv2.imwrite(LOW_ACCURACY_IMG_PATH + os.path.basename(f), img)
+            cv2.imwrite(LOW_ACCURACY_IMG_PATH + f, img_with_box)
             apply_hard_negative(img, flattern(windows), label_box)
 
-        save_img_with_box(f, img, pred_box, label_box)
-        save_progress(f)
-
 if __name__ == '__main__':
+    with open(ACCURACY_FILE, 'w+') as af:
+        af.write('filename,accurccy\n')
+
     hog = build_hog(winSize=(128, 128))
     clf = joblib.load(MODEL_PATH)
     label_boxes = load_bounding_box('../data/bounding_box.csv')
-    process('../data/rgb-image-test/', label_boxes, hog, clf)
+    process('../data/rgb-image-test', label_boxes, hog, clf)
+    draw_accuracy()

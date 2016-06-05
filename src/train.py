@@ -6,11 +6,11 @@ from sklearn import cross_validation
 import numpy as np
 import cv2
 
-MODEL_PATH = '../models/svmModel.pkl'
+MODEL_PATH = '../model/svmModel.pkl'
 
 def load_data(hog):
     filelist = {}
-    for f in file_iterator('../data/rgb-image-train/positive', 'jpg'):
+    for f in file_iterator('../data/rgb-image-train/rotated-positive', 'jpg'):
         filelist[f] = 1
 
     for f in file_iterator('../data/rgb-image-train/negative', 'jpg'):
@@ -29,15 +29,15 @@ def load_data(hog):
 
 def estimated_classifier(data, label):
     tuned_params = [
-        {'C': [0.01, 0.1, 1, 10, 100, 1000, 10000]}
+        {'C': [0.001, 0.01, 0.1, 1, 10, 1000]}
     ]
     score = "f1"
-    print "Tunning Parameters for %s" % score
+    print("Tunning Parameters for %s".format(score))
     grid_search = GridSearchCV(LinearSVC(C=1, class_weight='balanced'), tuned_params, cv=5, scoring='%s' % score)
     grid_search.fit(data, label)
-    print "Best parameters set found on development set:"
-    print grid_search.best_params_
-    print grid_search.best_score_
+    print("Best parameters set found on development set:")
+    print(grid_search.best_params_)
+    print(grid_search.best_score_)
     return grid_search.best_estimator_
 
 def train_clf(data, label):
