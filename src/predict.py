@@ -1,25 +1,33 @@
-from utils import file_iterator, pyramid, sliding_window, load_bounding_box, draw_rectangle
+from utils import file_iterator, pyramid, sliding_window, load_bounding_box, draw_rectangle, build_hog, overlap, abs, timestamp, cpt_area
 from sklearn.externals import joblib
 import numpy as np
 import csv
 import cv2
 import os
 
-def build_bounding_box(pred_boxes):
-    xu = sorted([p[0] for p in pred_boxes])[0]
-    yu = sorted([p[1] for p in pred_boxes])[0]
-    xb = sorted([p[2] for p in pred_boxes])[-1]
-    yb = sorted([p[3] for p in pred_boxes])[-1]
-    return xu, yu, xb, yb
+ACCURACY_FILE = '../results/accuracy.txt'
+HARD_NEGATIVE_PATH = '../results/rgb-hard-negative/'
+PREDICT_PATH = '../results/predict/'
+LOW_ACCURACY_IMG_PATH = '../results/rgb-low-accuracy/'
+PROGRESS_FILE = './.progress'
+
+def flattern(windows):
+    return [window for scaled_window in windows for window in scaled_window]
+
+def get_corner(points):
+    x1 = min([p[0] for p in points])
+    y1 = min([p[1] for p in points])
+    x2 = max([p[2] for p in points])
+    y2 = max([p[3] for p in points])
+    return [x1, y1, x2, y2]
 
 def cpt_accuracy(label_box, pred_box):
-    x1, y1, x2, y2 = overlap_area(label_box, pred_box)
-    s1 = (pred_box[2] - pred_box[0]) * (pred_box[3] - pred_box[1])
-    s2 = (label_box[2] - label_box[0]) * (label_box[3] - label_box[1])
-    s_overlap = (x2 - x1) * (y2 - y1)
+    s1 = cpt_area(pred_box)
+    s2 = cpt_area(label_box)
+    s_overlap = cpt_area(overlap(label_box, pred_box))
     return s_overlap/float(s1 + s2 - s_overlap)
 
-def positive_windows(origin_img, hog, clf):
+def detect(origin_img, hog, clf):
     windows = []
     for img, scale in pyramid(origin_img):
         points = []
@@ -34,48 +42,83 @@ def positive_windows(origin_img, hog, clf):
 
         Y = clf.predict(features)
         points = np.asarray(points)[Y==1] * scale
-        w = np.concatenate((points, points + 128*scale), axis=1)
-        windows = windows + w.tolist()
-    return positive_windows
+        w = np.concatenate((points, points + 128*scale), axis=1).astype(int)
+        if w.shape[0] > 0:
+            windows.append(w.tolist())
+    return windows
 
-def get_corner(points):
-    x1 = sorted([p[0] for p in points])[0]
-    y1 = sorted([p[1] for p in points])[0]
-    x2 = sorted([p[2] for p in points])[-1]
-    y2 = sorted([p[2] for p in points])[-1]
-    return [x1, y1, x2, y2]
+def save_img_with_box(filename, img, pred_box, label_box):
+    draw_rectangle(img, pred_box, color=(0,55,255))
+    draw_rectangle(img, label_box, color=(255,55,0))
+    cv2.imwrite(PREDICT_PATH + filename, img)
 
-def predict(img, label_box, hog, clf):
-    windows = positive_windows(img, hog, clf)
-    if len(windows) == 0:
-        return img, None
-    pred_box = get_corner(windows)
-    return pred_box
+def is_false_positive(label_box, window, threshold=0.65):
+    s_window = cpt_area(window)
+    s_overlap = cpt_area(overlap(label_box, window))
+    r = s_overlap/float(s_window)
+    return r < threshold
+
+def apply_hard_negative(img, windows, label_box, stride=20):
+    pos_windows = [w for w in windows if is_false_positive(label_box, w)]
+    x_cur, y_cur = 0, 0
+    for pw in pos_windows:
+        if abs(pw[0] - x_cur) > stride and abs(pw[1] - y_cur) > stride:
+            x_cur, y_cur = pw[0], pw[1]
+            filename = str(timestamp()) + '_hard_neg.jpg'
+            filepath = os.path.join(HARD_NEGATIVE_PATH, filename)
+            cv2.imwrite(filepath, img[pw[1]:pw[3], pw[0]:pw[2]])
+
+def save_progress(filename):
+    with open(PROGRESS_FILE, 'a+') as pf:
+        pf.write(filename)
+
+def load_progress():
+    if os.path.isfile(PROGRESS_FILE):
+        lines = [line.rstrip('\n') for line in open(PROGRESS_FILE)]
+        return set(lines)
+    return set([])
+
+def prepare(progress):
+    if len(progress) == 0 or not os.path.isfile(ACCURACY_FILE):
+        with open(ACCURACY_FILE, 'w+') as af:
+            af.write('filename,accurccy\n')
 
 def process(img_folder, label_boxes, hog, clf):
-    accuracy = []
-    for f in file_iterator(img_folder):
+    progress = load_progress()
+    prepare(progress)
+
+    for f in file_iterator(img_folder, 'jpg'):
+        if os.path.basename(f) in progress:
+            continue
+
+        print 'Processing %s ... ' % os.path.basename(f)
         img = cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2GRAY)
-        label_box = label_boxes[os.path.basename(f)]
-        print "Processing %s" % f
-        pred_box = detect(img, hog, clf)
+        f = os.path.basename(f)
 
+        print '    Detecting object and build bounding box ... '
+        windows = detect(img, hog, clf)
+        if len(windows) == 0:
+            print '        Object is not detected!'
+            save_progress(f)
+            continue
+        pred_box = get_corner(flattern(windows))
+        label_box = label_boxes[f]
+
+        print '    Computing accuracy ... '
         accuracy = cpt_accuracy(label_box, pred_box)
-        accuracy.append([os.path.basename(f), accuracy])
-        if accuracy < 0.4:
-            cv2.imwrite('./data/rgb-low-accuracy/' + os.path.basename(f), img)
+        with open(ACCURACY_FILE, 'a') as af:
+            af.write(f + ',' + str(accuracy) + '\n')
 
-        draw_rectange(img, pred_box, color=(0,55,255))
-        draw_rectange(img, label_box, color=(255,55,0))
-        cv2.imwrite('./predict/' + os.path.basename(f), img)
+        if accuracy < 0.5:
+            print '    Applying hard negative learning ... '
+            cv2.imwrite(LOW_ACCURACY_IMG_PATH + os.path.basename(f), img)
+            apply_hard_negative(img, flattern(windows), label_box)
 
-    with open("../accuracy.txt", "w+") as af:
-        writer = csv.writer(af, delimiter=',')
-        af.writerow(['filename', 'accurccy'])
-        af.writerows(accuracy)
+        save_img_with_box(f, img, pred_box, label_box)
+        save_progress(f)
 
 if __name__ == '__main__':
     hog = build_hog(winSize=(128, 128))
-    clf = joblib.load('./models/svmModel.pkl')
-    label_boxes = load_bounding_box('./bounding_box.csv')
-    process('./test/', label_boxes, hog, clf)
+    clf = joblib.load('../models/svmModel.pkl')
+    label_boxes = load_bounding_box('../data/bounding_box.csv')
+    process('../data/rgb-image-test/', label_boxes, hog, clf)

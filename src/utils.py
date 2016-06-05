@@ -1,7 +1,27 @@
 from fnmatch import fnmatch
+import imutils
+import time
 import csv
 import cv2
 import os
+
+def video_to_frame(video_path, img_path, stride=200):
+    for video_file in file_iterator('./video/depth/', 'm4v'):
+        cap = cv2.VideoCapture(video_file)
+        ret = False
+        if cap.isOpened():
+            ret, frame = cap.read()
+
+        i = 0
+        while(ret):
+            i = i + 1
+            ret, frame = cap.read()
+            filename = os.path.basename(video_file) + '_' + str(i) + '.jpg'
+            if i % stride == 0:
+                cv2.imwrite(os.path.join(img_path, filename), frame)
+
+        cap.release()
+        cv2.destroyAllWindows()
 
 def file_iterator(input_dir, extension):
     for root, dirs, files in os.walk(input_dir):
@@ -31,7 +51,7 @@ def pyramid(image, scale=1.2, minSize=(128, 128)):
     yield image.copy(), 1
     while True:
         w = int(image.shape[1] / scale)
-        image = imutils.resize(image, width=min(512, w))
+        image = imutils.resize(image, width=min(400, w))
         if image.shape[0] < minSize[1] or image.shape[1] < minSize[0]:
             break
         yield image.copy(), width / float(image.shape[1])
@@ -51,9 +71,18 @@ def load_bounding_box(filepath):
 def draw_rectangle(img, window, color=(0, 55, 255)):
     cv2.rectangle(img, (window[0], window[1]), (window[2], window[3]), color, +2, 4)
 
-def overlap_area(label_box, pred_box):
+def overlap(label_box, pred_box):
     x1 = max(label_box[0], pred_box[0])
     y1 = max(label_box[1], pred_box[1])
     x2 = min(label_box[2], pred_box[2])
     y2 = min(label_box[3], pred_box[3])
-    return x1, y1, x2, y2
+    return [x1, y1, x2, y2]
+
+def cpt_area(box):
+    return (box[0] - box[2]) * (box[1] - box[3])
+
+def timestamp():
+    return int(round(time.time() * 1000))
+
+def abs(val):
+    return val if val > 0 else -val
