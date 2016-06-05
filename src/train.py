@@ -6,6 +6,8 @@ from sklearn import cross_validation
 import numpy as np
 import cv2
 
+MODEL_PATH = '../models/svmModel.pkl'
+
 def load_data(hog):
     filelist = {}
     for f in file_iterator('../data/rgb-image-train/positive', 'jpg'):
@@ -41,7 +43,7 @@ def estimated_classifier(data, label):
 def train_clf(data, label):
     clf = estimated_classifier(data, label)
     clf.fit(data, label)
-    joblib.dump(clf, './models/svmModel.pkl')
+    joblib.dump(clf, MODEL_PATH)
 
 if __name__ == '__main__':
     hog = build_hog(winSize=(128, 128))

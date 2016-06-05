@@ -11,6 +11,7 @@ HARD_NEGATIVE_PATH = '../results/rgb-hard-negative/'
 PREDICT_PATH = '../results/predict/'
 LOW_ACCURACY_IMG_PATH = '../results/rgb-low-accuracy/'
 PROGRESS_FILE = './.progress'
+MODEL_PATH = '../models/svmModel.pkl'
 
 def flattern(windows):
     return [window for scaled_window in windows for window in scaled_window]
@@ -122,6 +123,6 @@ def process(img_folder, label_boxes, hog, clf):
 
 if __name__ == '__main__':
     hog = build_hog(winSize=(128, 128))
-    clf = joblib.load('../models/svmModel.pkl')
+    clf = joblib.load(MODEL_PATH)
     label_boxes = load_bounding_box('../data/bounding_box.csv')
     process('../data/rgb-image-test/', label_boxes, hog, clf)
