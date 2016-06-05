@@ -8,7 +8,7 @@ import csv
 import cv2
 import os
 
-ACCURACY_FILE = '../results/accuracy.txt'
+ACCURACY_FILE = '../results/accuracy.csv'
 ACCURACY_FIG_FILE = '../results/accuracy.png'
 HARD_NEGATIVE_PATH = '../results/rgb-hard-negative/'
 PREDICT_PATH = '../results/predict/'
