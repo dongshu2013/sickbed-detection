@@ -14,9 +14,6 @@ def load_data(hog):
     for f in file_iterator('../data/rgb-image-train/negative', 'jpg'):
         filelist[f] = 0
 
-    for f in file_iterator('../data/rgb-image-train/hard-negative', 'jpg'):
-        filelist[f] = 0
-
     files = filelist.keys()
     label = [filelist[f] for f in files]
     label = np.array(label).reshape(-1)
@@ -24,6 +21,7 @@ def load_data(hog):
     data = []
     for f in files:
         img = cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2GRAY)
+        img = cv2.resize(img, (128, 128))
         data.append(hog.compute(img).reshape(-1))
     return data, label
 

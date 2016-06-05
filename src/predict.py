@@ -1,6 +1,7 @@
 from utils import file_iterator, pyramid, sliding_window, load_bounding_box, draw_rectangle, build_hog, overlap, abs, timestamp, cpt_area
 from sklearn.externals import joblib
 import numpy as np
+import imutils
 import csv
 import cv2
 import os
@@ -66,7 +67,9 @@ def apply_hard_negative(img, windows, label_box, stride=20):
             x_cur, y_cur = pw[0], pw[1]
             filename = str(timestamp()) + '_hard_neg.jpg'
             filepath = os.path.join(HARD_NEGATIVE_PATH, filename)
-            cv2.imwrite(filepath, img[pw[1]:pw[3], pw[0]:pw[2]])
+            subimg = img[pw[1]:pw[3], pw[0]:pw[2]]
+            subimg = cv2.resize(subimg, (128, 128))
+            cv2.imwrite(filepath, subimg)
 
 def save_progress(filename):
     with open(PROGRESS_FILE, 'a+') as pf:
